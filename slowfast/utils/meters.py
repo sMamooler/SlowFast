@@ -563,7 +563,9 @@ class TestMeter(object):
                 except:
                     label_dict[label] = 1
                
-
+        print("###########################")
+        print(label_dict)
+        print("###########################")
         return label_dict
 
 
