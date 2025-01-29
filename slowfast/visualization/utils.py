@@ -2,13 +2,12 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 
 import itertools
-
-import matplotlib.pyplot as plt
 import numpy as np
-
-import slowfast.utils.logging as logging
+import matplotlib.pyplot as plt
 import torch
 from sklearn.metrics import confusion_matrix
+
+import slowfast.utils.logging as logging
 from slowfast.datasets.utils import pack_pathway_output, tensor_normalize
 
 logger = logging.get_logger(__name__)
@@ -247,7 +246,9 @@ class GetWeightAndActivation:
             if hasattr(cur_layer, "weight"):
                 weights[layer] = cur_layer.weight.clone().detach()
             else:
-                logger.error("Layer {} does not have weight attribute.".format(layer))
+                logger.error(
+                    "Layer {} does not have weight attribute.".format(layer)
+                )
         return weights
 
 

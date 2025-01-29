@@ -4,18 +4,17 @@
 """Meters."""
 
 import datetime
+import numpy as np
 import os
 from collections import defaultdict, deque
-
-import numpy as np
+import torch
+from fvcore.common.timer import Timer
+from sklearn.metrics import average_precision_score
 
 import slowfast.datasets.ava_helper as ava_helper
 import slowfast.utils.logging as logging
 import slowfast.utils.metrics as metrics
 import slowfast.utils.misc as misc
-import torch
-from fvcore.common.timer import Timer
-from sklearn.metrics import average_precision_score
 from slowfast.utils.ava_eval_helper import (
     evaluate_ava,
     read_csv,
@@ -23,6 +22,7 @@ from slowfast.utils.ava_eval_helper import (
     read_labelmap,
 )
 
+import pickle as pkl
 logger = logging.get_logger(__name__)
 
 
@@ -44,7 +44,7 @@ def get_ava_mini_groundtruth(full_groundtruth):
     return ret
 
 
-class AVAMeter:
+class AVAMeter(object):
     """
     Measure the AVA train, val, and test stats.
     """
@@ -73,11 +73,15 @@ class AVAMeter:
         self.categories, self.class_whitelist = read_labelmap(
             os.path.join(cfg.AVA.ANNOTATION_DIR, cfg.AVA.LABEL_MAP_FILE)
         )
-        gt_filename = os.path.join(cfg.AVA.ANNOTATION_DIR, cfg.AVA.GROUNDTRUTH_FILE)
+        gt_filename = os.path.join(
+            cfg.AVA.ANNOTATION_DIR, cfg.AVA.GROUNDTRUTH_FILE
+        )
         self.full_groundtruth = read_csv(gt_filename, self.class_whitelist)
         self.mini_groundtruth = get_ava_mini_groundtruth(self.full_groundtruth)
 
-        _, self.video_idx_to_name = ava_helper.load_image_lists(cfg, mode == "train")
+        _, self.video_idx_to_name = ava_helper.load_image_lists(
+            cfg, mode == "train"
+        )
         self.output_dir = cfg.OUTPUT_DIR
 
         self.min_top1_err = 100.0
@@ -102,7 +106,9 @@ class AVAMeter:
         if self.mode == "train":
             stats = {
                 "_type": "{}_iter".format(self.mode),
-                "cur_epoch": "{}/{}".format(cur_epoch + 1, self.cfg.SOLVER.MAX_EPOCH),
+                "cur_epoch": "{}/{}".format(
+                    cur_epoch + 1, self.cfg.SOLVER.MAX_EPOCH
+                ),
                 "cur_iter": "{}".format(cur_iter + 1),
                 "eta": eta,
                 "dt": self.iter_timer.seconds(),
@@ -115,7 +121,9 @@ class AVAMeter:
         elif self.mode == "val":
             stats = {
                 "_type": "{}_iter".format(self.mode),
-                "cur_epoch": "{}/{}".format(cur_epoch + 1, self.cfg.SOLVER.MAX_EPOCH),
+                "cur_epoch": "{}/{}".format(
+                    cur_epoch + 1, self.cfg.SOLVER.MAX_EPOCH
+                ),
                 "cur_iter": "{}".format(cur_iter + 1),
                 "eta": eta,
                 "dt": self.iter_timer.seconds(),
@@ -237,7 +245,7 @@ class AVAMeter:
             logging.log_json_stats(stats, self.output_dir)
 
 
-class TestMeter:
+class TestMeter(object):
     """
     Perform the multi-view ensemble for testing: each video with an unique index
     will be sampled with multiple clips, and the predictions of the clips will
@@ -250,6 +258,8 @@ class TestMeter:
         num_videos,
         num_clips,
         num_cls,
+        file_path,
+        output_dir,
         overall_iters,
         multi_label=False,
         ensemble_method="sum",
@@ -276,6 +286,8 @@ class TestMeter:
         self.overall_iters = overall_iters
         self.multi_label = multi_label
         self.ensemble_method = ensemble_method
+        self.data_file_path = file_path
+        self.output_dir = output_dir
         # Initialize tensors.
         self.video_preds = torch.zeros((num_videos, num_cls))
         if multi_label:
@@ -316,6 +328,7 @@ class TestMeter:
             clip_ids (tensor): clip indexes of the current batch, dimension is
                 N.
         """
+
         for ind in range(preds.shape[0]):
             vid_id = int(clip_ids[ind]) // self.num_clips
             if self.video_labels[vid_id].sum() > 0:
@@ -332,7 +345,9 @@ class TestMeter:
                 )
             else:
                 raise NotImplementedError(
-                    "Ensemble Method {} is not supported".format(self.ensemble_method)
+                    "Ensemble Method {} is not supported".format(
+                        self.ensemble_method
+                    )
                 )
             self.clip_count[vid_id] += 1
 
@@ -396,18 +411,301 @@ class TestMeter:
             self.stats["top1_acc"] = map_str
             self.stats["top5_acc"] = map_str
         else:
+
+
             num_topks_correct = metrics.topks_correct(
                 self.video_preds, self.video_labels, ks
             )
-            topks = [(x / self.video_preds.size(0)) * 100.0 for x in num_topks_correct]
+            topks = [
+                (x / self.video_preds.size(0)) * 100.0
+                for x in num_topks_correct
+            ]
             assert len({len(ks), len(topks)}) == 1
             for k, topk in zip(ks, topks):
-                # self.stats["top{}_acc".format(k)] = topk.cpu().numpy()
-                self.stats["top{}_acc".format(k)] = "{:.{prec}f}".format(topk, prec=2)
+                self.stats["top{}_acc".format(k)] = "{:.{prec}f}".format(
+                    topk, prec=2
+                )
         logging.log_json_stats(self.stats)
 
 
-class ScalarMeter:
+
+    def finalize_metrics_per_class(self, ks=(1, 5)):
+        """
+        Calculate and log the final ensembled metrics.
+        ks (tuple): list of top-k values for topk_accuracies. For example,
+            ks = (1, 5) correspods to top-1 and top-5 accuracy.
+        """
+        # clip_check = self.clip_count == self.num_clips
+        # if not all(clip_check):
+        #     logger.warning(
+        #         "clip count Ids={} = {} (should be {})".format(
+        #             np.argwhere(~clip_check),
+        #             self.clip_count[~clip_check],
+        #             self.num_clips,
+        #         )
+        #     )
+
+        unique_labels = torch.unique(self.video_labels)
+
+        perclass_acc = torch.Tensor([0,0])
+
+        for label in unique_labels:
+            label_indexs  = (self.video_labels == label).nonzero(as_tuple=True)[0]
+            sub_label = torch.index_select(self.video_labels,0,label_indexs)
+            sub_pred = torch.index_select(self.video_preds,0, label_indexs)
+
+
+            num_topks_correct=metrics.topks_correct(sub_pred,sub_label,ks)
+
+            topks_prediction = [
+                (x / sub_pred.size(0)) * 100.0
+                for x in num_topks_correct
+            ]
+            perclass_acc+=torch.Tensor(topks_prediction)
+        perclass_acc /= len(unique_labels)
+        perclass_acc = perclass_acc.tolist()
+
+    
+
+        self.stats = {"split": "test_final"}
+        if self.multi_label:
+            mean_ap = get_map(
+                self.video_preds.cpu().numpy(), self.video_labels.cpu().numpy()
+            )
+            map_str = "{:.{prec}f}".format(mean_ap * 100.0, prec=2)
+            self.stats["map"] = map_str
+            self.stats["top1_acc"] = map_str
+            self.stats["top5_acc"] = map_str
+        else:
+
+   
+
+            unique_labels = torch.unique(self.video_labels)
+
+            perclass_acc = torch.Tensor([0,0])
+
+            for label in unique_labels:
+                label_indexs  = (self.video_labels == label).nonzero(as_tuple=True)[0]
+                sub_label = torch.index_select(self.video_labels,0,label_indexs)
+                sub_pred = torch.index_select(self.video_preds,0, label_indexs)
+
+
+                num_topks_correct=metrics.topks_correct(sub_pred,sub_label,ks)
+
+                topks_prediction = [
+                    (x / sub_pred.size(0)) * 100.0
+                    for x in num_topks_correct
+                ]
+                perclass_acc+=torch.Tensor(topks_prediction)
+            perclass_acc /= len(unique_labels)
+            perclass_acc = perclass_acc.tolist()
+
+
+            assert len({len(ks), len(perclass_acc)}) == 1
+            for k, topk in zip(ks, perclass_acc):
+                # self.stats["top{}_acc".format(k)] = topk.cpu().numpy()
+                self.stats["perclass_top{}_acc".format(k)] = "{:.{prec}f}".format(
+                    topk, prec=2
+                )
+        logging.log_json_stats(self.stats)
+
+
+
+    def classify_longtail_classes(self,file):
+        head_classes = []
+        med_classes = []
+        tail_classes = []
+
+        label_dict = dict()
+            
+        with open(self.data_file_path+file,"r") as f:
+            for line in f.readlines():
+                label = line.split()[1]
+                try:
+                    label_dict[label] +=1
+                except:
+                    label_dict[label] = 1
+                
+            
+        
+        if len(label_dict)>20:
+            for key in label_dict.keys():
+                frequency = label_dict[key]
+                if frequency > 300:
+                    head_classes.append(key)
+                elif frequency>100:
+                    med_classes.append(key)
+                else:
+                    tail_classes.append(key)
+
+        else:
+            for key in label_dict.keys():
+                frequency = label_dict[key]
+                if frequency > 1500:
+                    head_classes.append(key)
+                elif frequency>500:
+                    med_classes.append(key)
+                else:
+                    tail_classes.append(key)
+
+        return head_classes, med_classes, tail_classes
+
+
+    def compute_frequency(self,file):
+
+        label_dict = dict()
+            
+        with open(self.data_file_path+file,"r") as f:
+            for line in f.readlines():
+                label = line.split()[1]
+                try:
+                    label_dict[label] +=1
+                except:
+                    label_dict[label] = 1
+               
+
+        return label_dict
+
+
+
+    def finalize_metrics_long_tail(self, ks=(1, 5)):
+
+        """
+        Calculate and log the final ensembled metrics.
+        ks (tuple): list of top-k values for topk_accuracies. For example,
+            ks = (1, 5) correspods to top-1 and top-5 accuracy.
+        """
+        # clip_check = self.clip_count == self.num_clips
+        # if not all(clip_check):
+        #     logger.warning(
+        #         "clip count Ids={} = {} (should be {})".format(
+        #             np.argwhere(~clip_check),
+        #             self.clip_count[~clip_check],
+        #             self.num_clips,
+        #         )
+        #     )
+
+        self.stats = {"split": "test_final"}
+
+
+        if self.multi_label:
+            mean_ap = get_map(
+                self.video_preds.cpu().numpy(), self.video_labels.cpu().numpy()
+            )
+            map_str = "{:.{prec}f}".format(mean_ap * 100.0, prec=2)
+            self.stats["map"] = map_str
+            self.stats["top1_acc"] = map_str
+            self.stats["top5_acc"] = map_str
+        else:
+
+            
+            # assert False
+
+            unique_labels = torch.unique(self.video_labels)
+
+
+           
+            head_classes, med_classes, tail_classes= \
+                 self.classify_longtail_classes("/train.csv")
+
+                
+            label_frequency = self.compute_frequency("/train.csv")
+
+
+
+            perclass_acc_head = torch.Tensor([0,0])
+            perclass_acc_med = torch.Tensor([0,0])
+            perclass_acc_tail = torch.Tensor([0,0])
+            number_head = number_med = number_tail = 0
+
+
+            unique_label_result = []
+
+            with open(self.output_dir+"/prediction.txt","w") as f:
+                for label in unique_labels:
+                    label_indexs = (self.video_labels==label).nonzero(as_tuple=True)[0]
+                    
+                    sub_label = torch.index_select(self.video_labels,0,label_indexs)
+                    sub_pred = torch.index_select(self.video_preds,0, label_indexs)
+
+                
+                    num_topks_correct,pred_index, gt_index=metrics.topks_correct(sub_pred,sub_label,ks,return_pred_index=True)
+
+
+                    _,pred_index_top1, gt_index_top1 =metrics.topks_correct(sub_pred,sub_label,[1],return_pred_index=True)
+                    for each_pred, each_label in zip(pred_index_top1, gt_index_top1):
+ 
+                        if each_pred.shape[0] >1:
+                            for each_sub_pred, each_sub_label in zip(each_pred, each_label):
+                                f.write(str(each_sub_pred.item())+" "+str(each_sub_label.item())+"\n")
+                        else:
+                            f.write(str(each_pred.item())+" "+str(each_label.item())+"\n")
+                        
+
+
+
+                    topks_labels = [
+                        (x / sub_pred.size(0)) * 100.0
+                        for x in num_topks_correct
+                    ]
+
+                    if str(torch.unique(sub_label).item()) in head_classes:
+                        perclass_acc_head+=torch.Tensor(topks_labels)
+                        number_head+=1
+                    elif str(torch.unique(sub_label).item()) in med_classes:
+                        perclass_acc_med+=torch.Tensor(topks_labels)
+                        number_med+=1
+                    elif str(torch.unique(sub_label).item()) in tail_classes:
+                        perclass_acc_tail+=torch.Tensor(topks_labels)
+                        number_tail+=1
+                    else:
+                        print(sub_label, "do not exist in the training dataset")
+                    
+                    unique_label_result.append([label.item(),topks_labels[0].item(),label_frequency[str(label.item())]])
+                
+
+            perclass_acc_head /= number_head
+            perclass_acc_med /= number_med
+            perclass_acc_tail /= number_tail
+
+            perclass_acc_head = perclass_acc_head.tolist()
+            perclass_acc_med = perclass_acc_med.tolist()
+            perclass_acc_tail = perclass_acc_tail.tolist()
+
+            # with open(self.output_dir+"/perclasss_result.pkl","wb") as f:
+            #     pkl.dump(unique_label_result,f)
+
+        
+
+
+            assert len({len(ks), len(perclass_acc_head)}) == 1
+            for k, topk in zip(ks, perclass_acc_head):
+                # self.stats["top{}_acc".format(k)] = topk.cpu().numpy()
+                self.stats["perclass_head_top{}_acc".format(k)] = "{:.{prec}f}".format(
+                    topk, prec=2
+                )
+
+            assert len({len(ks), len(perclass_acc_med)}) == 1
+            for k, topk in zip(ks, perclass_acc_med):
+                # self.stats["top{}_acc".format(k)] = topk.cpu().numpy()
+                self.stats["perclass_med_top{}_acc".format(k)] = "{:.{prec}f}".format(
+                    topk, prec=2
+                )
+
+            assert len({len(ks), len(perclass_acc_tail)}) == 1
+            for k, topk in zip(ks, perclass_acc_tail):
+                # self.stats["top{}_acc".format(k)] = topk.cpu().numpy()
+                self.stats["perclass_tail_top{}_acc".format(k)] = "{:.{prec}f}".format(
+                    topk, prec=2
+                )
+
+
+        logging.log_json_stats(self.stats)
+
+
+
+
+class ScalarMeter(object):
     """
     A scalar meter uses a deque to track a series of scaler values with a given
     window size. It supports calculating the median and average values of the
@@ -445,9 +743,6 @@ class ScalarMeter:
         """
         return np.median(self.deque)
 
-    def get_current_value(self):
-        return self.deque[-1]
-
     def get_win_avg(self):
         """
         Calculate the current average value of the deque.
@@ -461,43 +756,7 @@ class ScalarMeter:
         return self.total / self.count
 
 
-class ListMeter:
-    def __init__(self, list_size):
-        """
-        Args:
-            list_size (int): size of the list.
-        """
-        self.list = np.zeros(list_size)
-        self.total = np.zeros(list_size)
-        self.count = 0
-
-    def reset(self):
-        """
-        Reset the meter.
-        """
-        self.list = np.zeros_like(self.list)
-        self.total = np.zeros_like(self.total)
-        self.count = 0
-
-    def add_value(self, value):
-        """
-        Add a new list value to the meter.
-        """
-        self.list = np.array(value)
-        self.count += 1
-        self.total += self.list
-
-    def get_value(self):
-        return self.list
-
-    def get_global_avg(self):
-        """
-        Calculate the global mean value.
-        """
-        return self.total / self.count
-
-
-class TrainMeter:
+class TrainMeter(object):
     """
     Measure training stats.
     """
@@ -517,7 +776,6 @@ class TrainMeter:
         self.loss = ScalarMeter(cfg.LOG_PERIOD)
         self.loss_total = 0.0
         self.lr = None
-        self.grad_norm = None
         # Current minibatch errors (smoothed over a window).
         self.mb_top1_err = ScalarMeter(cfg.LOG_PERIOD)
         self.mb_top5_err = ScalarMeter(cfg.LOG_PERIOD)
@@ -526,7 +784,6 @@ class TrainMeter:
         self.num_top5_mis = 0
         self.num_samples = 0
         self.output_dir = cfg.OUTPUT_DIR
-        self.multi_loss = None
 
     def reset(self):
         """
@@ -535,14 +792,11 @@ class TrainMeter:
         self.loss.reset()
         self.loss_total = 0.0
         self.lr = None
-        self.grad_norm = None
         self.mb_top1_err.reset()
         self.mb_top5_err.reset()
         self.num_top1_mis = 0
         self.num_top5_mis = 0
         self.num_samples = 0
-        if self.multi_loss is not None:
-            self.multi_loss.reset()
 
     def iter_tic(self):
         """
@@ -562,9 +816,7 @@ class TrainMeter:
         self.data_timer.pause()
         self.net_timer.reset()
 
-    def update_stats(
-        self, top1_err, top5_err, loss, lr, grad_norm, mb_size, multi_loss=None
-    ):
+    def update_stats(self, top1_err, top5_err, loss, lr, mb_size):
         """
         Update the current stats.
         Args:
@@ -573,11 +825,9 @@ class TrainMeter:
             loss (float): loss value.
             lr (float): learning rate.
             mb_size (int): mini batch size.
-            multi_loss (list): a list of values for multi-tasking losses.
         """
         self.loss.add_value(loss)
         self.lr = lr
-        self.grad_norm = grad_norm
         self.loss_total += loss * mb_size
         self.num_samples += mb_size
 
@@ -588,23 +838,6 @@ class TrainMeter:
             # Aggregate stats
             self.num_top1_mis += top1_err * mb_size
             self.num_top5_mis += top5_err * mb_size
-        if multi_loss:
-            if self.multi_loss is None:
-                self.multi_loss = ListMeter(len(multi_loss))
-            self.multi_loss.add_value(multi_loss)
-        if (
-            self._cfg.TRAIN.KILL_LOSS_EXPLOSION_FACTOR > 0.0
-            and len(self.loss.deque) > 6
-        ):
-            prev_loss = 0.0
-            for i in range(2, 7):
-                prev_loss += self.loss.deque[len(self.loss.deque) - i]
-            if loss > self._cfg.TRAIN.KILL_LOSS_EXPLOSION_FACTOR * prev_loss / 5.0:
-                raise RuntimeError(
-                    "ERROR: Got Loss explosion of {} {}".format(
-                        loss, datetime.datetime.now()
-                    )
-                )
 
     def log_iter_stats(self, cur_epoch, cur_iter):
         """
@@ -620,7 +853,9 @@ class TrainMeter:
         )
         eta = str(datetime.timedelta(seconds=int(eta_sec)))
         stats = {
-            "_type": "train_iter_{}".format("ssl" if self._cfg.TASK == "ssl" else ""),
+            "_type": "train_iter_{}".format(
+                "ssl" if self._cfg.TASK == "ssl" else ""
+            ),
             "epoch": "{}/{}".format(cur_epoch + 1, self._cfg.SOLVER.MAX_EPOCH),
             "iter": "{}/{}".format(cur_iter + 1, self.epoch_iters),
             "dt": self.iter_timer.seconds(),
@@ -629,16 +864,11 @@ class TrainMeter:
             "eta": eta,
             "loss": self.loss.get_win_median(),
             "lr": self.lr,
-            "grad_norm": self.grad_norm,
             "gpu_mem": "{:.2f}G".format(misc.gpu_mem_usage()),
         }
         if not self._cfg.DATA.MULTI_LABEL:
             stats["top1_err"] = self.mb_top1_err.get_win_median()
             stats["top5_err"] = self.mb_top5_err.get_win_median()
-        if self.multi_loss is not None:
-            loss_list = self.multi_loss.get_value()
-            for idx, loss in enumerate(loss_list):
-                stats["loss_" + str(idx)] = loss
         logging.log_json_stats(stats)
 
     def log_epoch_stats(self, cur_epoch):
@@ -652,14 +882,15 @@ class TrainMeter:
         )
         eta = str(datetime.timedelta(seconds=int(eta_sec)))
         stats = {
-            "_type": "train_epoch{}".format("_ssl" if self._cfg.TASK == "ssl" else ""),
+            "_type": "train_epoch{}".format(
+                "_ssl" if self._cfg.TASK == "ssl" else ""
+            ),
             "epoch": "{}/{}".format(cur_epoch + 1, self._cfg.SOLVER.MAX_EPOCH),
             "dt": self.iter_timer.seconds(),
             "dt_data": self.data_timer.seconds(),
             "dt_net": self.net_timer.seconds(),
             "eta": eta,
             "lr": self.lr,
-            "grad_norm": self.grad_norm,
             "gpu_mem": "{:.2f}G".format(misc.gpu_mem_usage()),
             "RAM": "{:.2f}/{:.2f}G".format(*misc.cpu_mem_usage()),
         }
@@ -670,14 +901,10 @@ class TrainMeter:
             stats["top1_err"] = top1_err
             stats["top5_err"] = top5_err
             stats["loss"] = avg_loss
-        if self.multi_loss is not None:
-            avg_loss_list = self.multi_loss.get_global_avg()
-            for idx, loss in enumerate(avg_loss_list):
-                stats["loss_" + str(idx)] = loss
         logging.log_json_stats(stats, self.output_dir)
 
 
-class ValMeter:
+class ValMeter(object):
     """
     Measures validation stats.
     """
@@ -777,7 +1004,9 @@ class ValMeter:
         eta_sec = self.iter_timer.seconds() * (self.max_iter - cur_iter - 1)
         eta = str(datetime.timedelta(seconds=int(eta_sec)))
         stats = {
-            "_type": "val_iter{}".format("_ssl" if self._cfg.TASK == "ssl" else ""),
+            "_type": "val_iter{}".format(
+                "_ssl" if self._cfg.TASK == "ssl" else ""
+            ),
             "epoch": "{}/{}".format(cur_epoch + 1, self._cfg.SOLVER.MAX_EPOCH),
             "iter": "{}/{}".format(cur_iter + 1, self.max_iter),
             "time_diff": self.iter_timer.seconds(),
@@ -796,7 +1025,9 @@ class ValMeter:
             cur_epoch (int): the number of current epoch.
         """
         stats = {
-            "_type": "val_epoch{}".format("_ssl" if self._cfg.TASK == "ssl" else ""),
+            "_type": "val_epoch{}".format(
+                "_ssl" if self._cfg.TASK == "ssl" else ""
+            ),
             "epoch": "{}/{}".format(cur_epoch + 1, self._cfg.SOLVER.MAX_EPOCH),
             "time_diff": self.iter_timer.seconds(),
             "gpu_mem": "{:.2f}G".format(misc.gpu_mem_usage()),

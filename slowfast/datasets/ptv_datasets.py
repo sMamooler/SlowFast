@@ -3,11 +3,27 @@
 import functools
 import os
 from typing import Dict
+import torch
+from torch.utils.data import (
+    DistributedSampler,
+    RandomSampler,
+    SequentialSampler,
+)
+from torchvision.transforms import Compose, Lambda
+from torchvision.transforms._transforms_video import (
+    NormalizeVideo,
+    RandomCropVideo,
+    RandomHorizontalFlipVideo,
+)
 
 import slowfast.utils.logging as logging
-import torch
 
-from pytorchvideo.data import Charades, LabeledVideoDataset, make_clip_sampler, SSv2
+from pytorchvideo.data import (
+    Charades,
+    LabeledVideoDataset,
+    SSv2,
+    make_clip_sampler,
+)
 from pytorchvideo.data.labeled_video_paths import LabeledVideoPaths
 from pytorchvideo.transforms import (
     ApplyTransformToKey,
@@ -15,13 +31,6 @@ from pytorchvideo.transforms import (
     ShortSideScale,
     UniformCropVideo,
     UniformTemporalSubsample,
-)
-from torch.utils.data import DistributedSampler, RandomSampler, SequentialSampler
-from torchvision.transforms import Compose, Lambda
-from torchvision.transforms._transforms_video import (
-    NormalizeVideo,
-    RandomCropVideo,
-    RandomHorizontalFlipVideo,
 )
 
 from . import utils as utils
@@ -161,8 +170,12 @@ def Ptvkinetics(cfg, mode):
 
     logger.info("Constructing Ptvkinetics {}...".format(mode))
 
-    clip_duration = cfg.DATA.NUM_FRAMES * cfg.DATA.SAMPLING_RATE / cfg.DATA.TARGET_FPS
-    path_to_file = os.path.join(cfg.DATA.PATH_TO_DATA_DIR, "{}.csv".format(mode))
+    clip_duration = (
+        cfg.DATA.NUM_FRAMES * cfg.DATA.SAMPLING_RATE / cfg.DATA.TARGET_FPS
+    )
+    path_to_file = os.path.join(
+        cfg.DATA.PATH_TO_DATA_DIR, "{}.csv".format(mode)
+    )
     labeled_video_paths = LabeledVideoPaths.from_path(path_to_file)
     num_videos = len(labeled_video_paths)
     labeled_video_paths.path_prefix = cfg.DATA.PATH_PREFIX
@@ -207,7 +220,9 @@ def Ptvkinetics(cfg, mode):
         if cfg.NUM_GPUS > 1:
             video_sampler = DistributedSampler
         else:
-            video_sampler = RandomSampler if mode == "train" else SequentialSampler
+            video_sampler = (
+                RandomSampler if mode == "train" else SequentialSampler
+            )
     else:
         num_clips = cfg.TEST.NUM_ENSEMBLE_VIEWS
         num_crops = cfg.TEST.NUM_SPATIAL_CROPS
@@ -221,7 +236,9 @@ def Ptvkinetics(cfg, mode):
                             UniformTemporalSubsample(cfg.DATA.NUM_FRAMES),
                             Lambda(div255),
                             NormalizeVideo(cfg.DATA.MEAN, cfg.DATA.STD),
-                            ShortSideScale(size=cfg.DATA.TRAIN_JITTER_SCALES[0]),
+                            ShortSideScale(
+                                size=cfg.DATA.TRAIN_JITTER_SCALES[0]
+                            ),
                         ]
                     ),
                 ),
@@ -236,7 +253,9 @@ def Ptvkinetics(cfg, mode):
             num_clips,
             num_crops,
         )
-        video_sampler = DistributedSampler if cfg.NUM_GPUS > 1 else SequentialSampler
+        video_sampler = (
+            DistributedSampler if cfg.NUM_GPUS > 1 else SequentialSampler
+        )
 
     return PTVDatasetWrapper(
         num_videos=num_videos,
@@ -266,7 +285,11 @@ def process_charades_label(x, mode, num_classes):
     Returns:
         x (dict): video clip with updated label information.
     """
-    label = utils.aggregate_labels(x["label"]) if mode == "train" else x["video_label"]
+    label = (
+        utils.aggregate_labels(x["label"])
+        if mode == "train"
+        else x["video_label"]
+    )
     x["label"] = torch.as_tensor(utils.as_binary_vector(label, num_classes))
 
     return x
@@ -358,7 +381,9 @@ def Ptvcharades(cfg, mode):
         if cfg.NUM_GPUS > 1:
             video_sampler = DistributedSampler
         else:
-            video_sampler = RandomSampler if mode == "train" else SequentialSampler
+            video_sampler = (
+                RandomSampler if mode == "train" else SequentialSampler
+            )
     else:
         num_clips = cfg.TEST.NUM_ENSEMBLE_VIEWS
         num_crops = cfg.TEST.NUM_SPATIAL_CROPS
@@ -398,7 +423,9 @@ def Ptvcharades(cfg, mode):
             num_clips,
             num_crops,
         )
-        video_sampler = DistributedSampler if cfg.NUM_GPUS > 1 else SequentialSampler
+        video_sampler = (
+            DistributedSampler if cfg.NUM_GPUS > 1 else SequentialSampler
+        )
 
     data_path = os.path.join(cfg.DATA.PATH_TO_DATA_DIR, "{}.csv".format(mode))
     dataset = Charades(
@@ -489,7 +516,9 @@ def Ptvssv2(cfg, mode):
         if cfg.NUM_GPUS > 1:
             video_sampler = DistributedSampler
         else:
-            video_sampler = RandomSampler if mode == "train" else SequentialSampler
+            video_sampler = (
+                RandomSampler if mode == "train" else SequentialSampler
+            )
     else:
         assert cfg.TEST.NUM_ENSEMBLE_VIEWS == 1
         num_clips = cfg.TEST.NUM_ENSEMBLE_VIEWS
@@ -523,7 +552,9 @@ def Ptvssv2(cfg, mode):
             num_clips,
             num_crops,
         )
-        video_sampler = DistributedSampler if cfg.NUM_GPUS > 1 else SequentialSampler
+        video_sampler = (
+            DistributedSampler if cfg.NUM_GPUS > 1 else SequentialSampler
+        )
 
     label_name_file = os.path.join(
         cfg.DATA.PATH_TO_DATA_DIR, "something-something-v2-labels.json"

@@ -3,13 +3,12 @@
 
 import itertools
 import logging as log
-
-import matplotlib.pyplot as plt
 import numpy as np
-
-import slowfast.utils.logging as logging
+import matplotlib.pyplot as plt
 import torch
 from detectron2.utils.visualizer import Visualizer
+
+import slowfast.utils.logging as logging
 from slowfast.utils.misc import get_class_names
 
 logger = logging.get_logger(__name__)
@@ -37,7 +36,9 @@ def _create_text_labels(classes, scores, class_names, ground_truth=False):
         labels = ["[{}] {}".format("GT", label) for label in labels]
     elif scores is not None:
         assert len(classes) == len(scores)
-        labels = ["[{:.2f}] {}".format(s, label) for s, label in zip(scores, labels)]
+        labels = [
+            "[{:.2f}] {}".format(s, label) for s, label in zip(scores, labels)
+        ]
     return labels
 
 
@@ -377,7 +378,9 @@ class VideoVisualizer:
                 This is used for choosing predictions for visualization.
 
         """
-        assert mode in ["top-k", "thres"], "Mode {} is not supported.".format(mode)
+        assert mode in ["top-k", "thres"], "Mode {} is not supported.".format(
+            mode
+        )
         self.mode = mode
         self.num_classes = num_classes
         self.class_names, _, _ = get_class_names(class_names_path, None, None)
@@ -462,7 +465,9 @@ class VideoVisualizer:
                 )
             )
         frame_visualizer = ImgVisualizer(frame, meta=None)
-        font_size = min(max(np.sqrt(frame.shape[0] * frame.shape[1]) // 35, 5), 9)
+        font_size = min(
+            max(np.sqrt(frame.shape[0] * frame.shape[1]) // 35, 5), 9
+        )
         top_corner = not ground_truth
         if bboxes is not None:
             assert len(preds) == len(
@@ -665,6 +670,8 @@ class VideoVisualizer:
         else:
             common_class_ids = list(range(self.num_classes))
 
-        thres_array = np.full(shape=(self.num_classes,), fill_value=self.lower_thres)
+        thres_array = np.full(
+            shape=(self.num_classes,), fill_value=self.lower_thres
+        )
         thres_array[common_class_ids] = self.thres
         self.thres = torch.from_numpy(thres_array)

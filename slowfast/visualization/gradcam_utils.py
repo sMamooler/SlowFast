@@ -2,10 +2,10 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 
 import matplotlib.pyplot as plt
-
-import slowfast.datasets.utils as data_utils
 import torch
 import torch.nn.functional as F
+
+import slowfast.datasets.utils as data_utils
 from slowfast.visualization.utils import get_layer
 
 
@@ -16,7 +16,9 @@ class GradCAM:
     https://arxiv.org/pdf/1610.02391.pdf
     """
 
-    def __init__(self, model, target_layers, data_mean, data_std, colormap="viridis"):
+    def __init__(
+        self, model, target_layers, data_mean, data_std, colormap="viridis"
+    ):
         """
         Args:
             model (model): the model to be used.
@@ -76,8 +78,8 @@ class GradCAM:
                 each corresponding input.
             preds (tensor): shape (n_instances, n_class). Model predictions for `inputs`.
         """
-        assert (
-            len(inputs) == len(self.target_layers)
+        assert len(inputs) == len(
+            self.target_layers
         ), "Must register the same number of target layers as the number of input pathways."
         input_clone = [inp.clone() for inp in inputs]
         preds = self.model(input_clone)
@@ -103,7 +105,9 @@ class GradCAM:
             weights = torch.mean(gradients.view(B, C, Tg, -1), dim=3)
 
             weights = weights.view(B, C, Tg, 1, 1)
-            localization_map = torch.sum(weights * activations, dim=1, keepdim=True)
+            localization_map = torch.sum(
+                weights * activations, dim=1, keepdim=True
+            )
             localization_map = F.relu(localization_map)
             localization_map = F.interpolate(
                 localization_map,
@@ -112,8 +116,12 @@ class GradCAM:
                 align_corners=False,
             )
             localization_map_min, localization_map_max = (
-                torch.min(localization_map.view(B, -1), dim=-1, keepdim=True)[0],
-                torch.max(localization_map.view(B, -1), dim=-1, keepdim=True)[0],
+                torch.min(localization_map.view(B, -1), dim=-1, keepdim=True)[
+                    0
+                ],
+                torch.max(localization_map.view(B, -1), dim=-1, keepdim=True)[
+                    0
+                ],
             )
             localization_map_min = torch.reshape(
                 localization_map_min, shape=(B, 1, 1, 1, 1)

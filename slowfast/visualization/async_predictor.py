@@ -2,13 +2,12 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 
 import atexit
-import queue
-
 import numpy as np
-
-import slowfast.utils.logging as logging
+import queue
 import torch
 import torch.multiprocessing as mp
+
+import slowfast.utils.logging as logging
 from slowfast.datasets import cv2_transform
 from slowfast.visualization.predictor import Predictor
 
@@ -171,7 +170,9 @@ class AsyncVis:
         self.put_id = -1
         for _ in range(max(num_workers, 1)):
             self.procs.append(
-                AsyncVis._VisWorker(video_vis, self.task_queue, self.result_queue)
+                AsyncVis._VisWorker(
+                    video_vis, self.task_queue, self.result_queue
+                )
             )
 
         for p in self.procs:
@@ -245,7 +246,9 @@ class AsyncDemo:
                 slowfast/config/defaults.py
             async_vis (AsyncVis object): asynchronous visualizer.
         """
-        self.model = AsycnActionPredictor(cfg=cfg, result_queue=async_vis.task_queue)
+        self.model = AsycnActionPredictor(
+            cfg=cfg, result_queue=async_vis.task_queue
+        )
         self.async_vis = async_vis
 
     def put(self, task):

@@ -6,7 +6,6 @@ import copy
 import queue
 import threading
 import time
-
 import cv2
 
 import slowfast.utils.logging as logging
@@ -30,7 +29,9 @@ class VideoManager:
             cfg.DEMO.WEBCAM > -1 or cfg.DEMO.INPUT_VIDEO != ""
         ), "Must specify a data source as input."
 
-        self.source = cfg.DEMO.WEBCAM if cfg.DEMO.WEBCAM > -1 else cfg.DEMO.INPUT_VIDEO
+        self.source = (
+            cfg.DEMO.WEBCAM if cfg.DEMO.WEBCAM > -1 else cfg.DEMO.INPUT_VIDEO
+        )
 
         self.display_width = cfg.DEMO.DISPLAY_WIDTH
         self.display_height = cfg.DEMO.DISPLAY_HEIGHT
@@ -159,7 +160,9 @@ class ThreadVideoManager:
             cfg.DEMO.WEBCAM > -1 or cfg.DEMO.INPUT_VIDEO != ""
         ), "Must specify a data source as input."
 
-        self.source = cfg.DEMO.WEBCAM if cfg.DEMO.WEBCAM > -1 else cfg.DEMO.INPUT_VIDEO
+        self.source = (
+            cfg.DEMO.WEBCAM if cfg.DEMO.WEBCAM > -1 else cfg.DEMO.INPUT_VIDEO
+        )
 
         self.display_width = cfg.DEMO.DISPLAY_WIDTH
         self.display_height = cfg.DEMO.DISPLAY_HEIGHT
@@ -248,7 +251,9 @@ class ThreadVideoManager:
                 self.buffer = frames[-self.buffer_size :]
 
             task.add_frames(self.put_id + 1, frames)
-            task.num_buffer_frames = 0 if self.put_id == -1 else self.buffer_size
+            task.num_buffer_frames = (
+                0 if self.put_id == -1 else self.buffer_size
+            )
             with self.put_id_lock:
                 self.put_id += 1
                 self.not_end = was_read

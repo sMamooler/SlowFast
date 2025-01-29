@@ -23,22 +23,25 @@
 
 """Helper functions for AVA evaluation."""
 
-from __future__ import absolute_import, division, print_function, unicode_literals
-
+from __future__ import (
+    absolute_import,
+    division,
+    print_function,
+    unicode_literals,
+)
 import csv
 import logging
+import numpy as np
 import pprint
 import time
 from collections import defaultdict
 
-import numpy as np
-
 import slowfast.utils.distributed as du
-from slowfast.utils.env import pathmgr
-from vision.fair.slowfast.ava_evaluation import (
+from slowfast.utils.ava_evaluation import (
     object_detection_evaluation,
     standard_fields,
 )
+from slowfast.utils.env import pathmgr
 
 logger = logging.getLogger(__name__)
 
@@ -155,7 +158,9 @@ def evaluate_ava(
     )
 
     logger.info("Evaluating with %d unique GT frames." % len(groundtruth[0]))
-    logger.info("Evaluating with %d unique detection frames" % len(detections[0]))
+    logger.info(
+        "Evaluating with %d unique detection frames" % len(detections[0])
+    )
 
     write_results(detections, "detections_%s.csv" % name)
     write_results(groundtruth, "groundtruth_%s.csv" % name)
@@ -166,10 +171,14 @@ def evaluate_ava(
     return results["PascalBoxes_Precision/mAP@0.5IOU"]
 
 
-def run_evaluation(categories, groundtruth, detections, excluded_keys, verbose=True):
+def run_evaluation(
+    categories, groundtruth, detections, excluded_keys, verbose=True
+):
     """AVA evaluation main logic."""
 
-    pascal_evaluator = object_detection_evaluation.PascalDetectionEvaluator(categories)
+    pascal_evaluator = object_detection_evaluation.PascalDetectionEvaluator(
+        categories
+    )
 
     boxes, labels, _ = groundtruth
 
@@ -208,7 +217,10 @@ def run_evaluation(categories, groundtruth, detections, excluded_keys, verbose=T
     for image_key in boxes:
         if image_key in excluded_keys:
             logging.info(
-                ("Found excluded timestamp in detections: %s. " "It will be ignored."),
+                (
+                    "Found excluded timestamp in detections: %s. "
+                    "It will be ignored."
+                ),
                 image_key,
             )
             continue

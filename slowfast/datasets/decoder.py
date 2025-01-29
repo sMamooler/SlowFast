@@ -3,9 +3,8 @@
 
 import logging
 import math
-import random
-
 import numpy as np
+import random
 import torch
 import torchvision.io as io
 
@@ -67,7 +66,9 @@ def get_start_end_idx(
                 start_idx = math.floor(delta / 2)
             else:
                 # Uniformly sample the clip with the given index.
-                start_idx = clip_idx * math.floor(delta / (num_clips_uniform - 1))
+                start_idx = clip_idx * math.floor(
+                    delta / (num_clips_uniform - 1)
+                )
         else:
             # Uniformly sample the clip with the given index.
             start_idx = delta * clip_idx / num_clips_uniform
@@ -317,7 +318,9 @@ def torchvision_decode(
         )
         frames_out = [None] * len(num_frames)
         for k in range(len(num_frames)):
-            pts_per_frame = video_meta["video_denominator"] / video_meta["video_fps"]
+            pts_per_frame = (
+                video_meta["video_denominator"] / video_meta["video_fps"]
+            )
             video_start_pts = int(start_end_delta_time[k, 0] * pts_per_frame)
             video_end_pts = int(start_end_delta_time[k, 1] * pts_per_frame)
 
@@ -501,7 +504,9 @@ def decode(
         sampling_rate = [sampling_rate[i] for i in ind_clips]
         num_frames = [num_frames[i] for i in ind_clips]
     else:
-        ind_clips = np.arange(num_decode)  # clips come temporally ordered from decoder
+        ind_clips = np.arange(
+            num_decode
+        )  # clips come temporally ordered from decoder
     try:
         if backend == "pyav":
             assert (
@@ -537,7 +542,9 @@ def decode(
                 max_delta=max_delta,
             )
         else:
-            raise NotImplementedError("Unknown decoding backend {}".format(backend))
+            raise NotImplementedError(
+                "Unknown decoding backend {}".format(backend)
+            )
     except Exception as e:
         print("Failed to decode by {} with exception: {}".format(backend, e))
         return None, None, None
@@ -610,7 +617,8 @@ def decode(
         start_end_delta_time = start_end_delta_time_
         time_diff_aug = time_diff_aug_
         assert all(
-            frames_out[i].shape[0] == num_frames_orig[i] for i in range(num_decode)
+            frames_out[i].shape[0] == num_frames_orig[i]
+            for i in range(num_decode)
         )
 
     return frames_out, start_end_delta_time, time_diff_aug

@@ -5,12 +5,17 @@
 """Video models using PyTorchVideo model builder."""
 
 from functools import partial
-
 import torch.nn as nn
 from detectron2.layers import ROIAlign
 
+from slowfast.models.batchnorm_helper import get_norm
+from slowfast.models.video_model_builder import _POOL1, _TEMPORAL_KERNEL_BASIS
+
 from pytorchvideo.models.csn import create_csn
-from pytorchvideo.models.head import create_res_basic_head, create_res_roi_pooling_head
+from pytorchvideo.models.head import (
+    create_res_basic_head,
+    create_res_roi_pooling_head,
+)
 from pytorchvideo.models.r2plus1d import (
     create_2plus1d_bottleneck_block,
     create_r2plus1d,
@@ -20,10 +25,11 @@ from pytorchvideo.models.slowfast import create_slowfast
 from pytorchvideo.models.vision_transformers import (
     create_multiscale_vision_transformers,
 )
-from pytorchvideo.models.x3d import create_x3d, create_x3d_bottleneck_block, Swish
-
-from slowfast.models.batchnorm_helper import get_norm
-from slowfast.models.video_model_builder import _POOL1, _TEMPORAL_KERNEL_BASIS
+from pytorchvideo.models.x3d import (
+    Swish,
+    create_x3d,
+    create_x3d_bottleneck_block,
+)
 
 from .build import MODEL_REGISTRY
 
@@ -44,7 +50,8 @@ def get_head_act(act_func):
         return nn.Sigmoid()
     else:
         raise NotImplementedError(
-            "{} is not supported as a head activation " "function.".format(act_func)
+            "{} is not supported as a head activation "
+            "function.".format(act_func)
         )
 
 
@@ -65,7 +72,9 @@ class PTVResNet(nn.Module):
         """
         super(PTVResNet, self).__init__()
 
-        assert cfg.RESNET.STRIDE_1X1 is False, "STRIDE_1x1 must be True for PTVResNet"
+        assert (
+            cfg.RESNET.STRIDE_1X1 is False
+        ), "STRIDE_1x1 must be True for PTVResNet"
         assert (
             cfg.RESNET.TRANS_FUNC == "bottleneck_transform"
         ), f"Unsupported TRANS_FUNC type {cfg.RESNET.TRANS_FUNC} for PTVResNet"
@@ -225,7 +234,9 @@ class PTVSlowFast(nn.Module):
         """
         super(PTVSlowFast, self).__init__()
 
-        assert cfg.RESNET.STRIDE_1X1 is False, "STRIDE_1x1 must be True for PTVSlowFast"
+        assert (
+            cfg.RESNET.STRIDE_1X1 is False
+        ), "STRIDE_1x1 must be True for PTVSlowFast"
         assert (
             cfg.RESNET.TRANS_FUNC == "bottleneck_transform"
         ), f"Unsupported TRANS_FUNC type {cfg.RESNET.TRANS_FUNC} for PTVSlowFast"
@@ -261,7 +272,10 @@ class PTVSlowFast(nn.Module):
                     ((temp_kernel[stage + 1][pathway][0], 1, 1),)
                     * num_block_temp_kernel[stage][pathway]
                     + ((1, 1, 1),)
-                    * (stage_depth[stage] - num_block_temp_kernel[stage][pathway])
+                    * (
+                        stage_depth[stage]
+                        - num_block_temp_kernel[stage][pathway]
+                    )
                 )
 
         # Head from config
@@ -286,7 +300,9 @@ class PTVSlowFast(nn.Module):
             )
             head_pool_kernel_sizes = (
                 (
-                    cfg.DATA.NUM_FRAMES // cfg.SLOWFAST.ALPHA // pool_size[0][0],
+                    cfg.DATA.NUM_FRAMES
+                    // cfg.SLOWFAST.ALPHA
+                    // pool_size[0][0],
                     1,
                     1,
                 ),
@@ -295,7 +311,9 @@ class PTVSlowFast(nn.Module):
         else:
             head_pool_kernel_sizes = (
                 (
-                    cfg.DATA.NUM_FRAMES // cfg.SLOWFAST.ALPHA // pool_size[0][0],
+                    cfg.DATA.NUM_FRAMES
+                    // cfg.SLOWFAST.ALPHA
+                    // pool_size[0][0],
                     cfg.DATA.TRAIN_CROP_SIZE // 32 // pool_size[0][1],
                     cfg.DATA.TRAIN_CROP_SIZE // 32 // pool_size[0][2],
                 ),
@@ -416,7 +434,9 @@ class PTVX3D(nn.Module):
         """
         super(PTVX3D, self).__init__()
 
-        assert cfg.RESNET.STRIDE_1X1 is False, "STRIDE_1x1 must be True for PTVX3D"
+        assert (
+            cfg.RESNET.STRIDE_1X1 is False
+        ), "STRIDE_1x1 must be True for PTVX3D"
         assert (
             cfg.RESNET.TRANS_FUNC == "x3d_transform"
         ), f"Unsupported TRANS_FUNC type {cfg.RESNET.TRANS_FUNC} for PTVX3D"

@@ -3,15 +3,14 @@
 Functions for benchmarks.
 """
 
-import pprint
-
 import numpy as np
-
-import slowfast.utils.logging as logging
-import slowfast.utils.misc as misc
+import pprint
 import torch
 import tqdm
 from fvcore.common.timer import Timer
+
+import slowfast.utils.logging as logging
+import slowfast.utils.misc as misc
 from slowfast.datasets import loader
 from slowfast.utils.env import setup_environment
 
@@ -41,7 +40,9 @@ def benchmark_data_loading(cfg):
 
     timer = Timer()
     dataloader = loader.construct_loader(cfg, "train")
-    logger.info("Initialize loader using {:.2f} seconds.".format(timer.seconds()))
+    logger.info(
+        "Initialize loader using {:.2f} seconds.".format(timer.seconds())
+    )
     # Total batch size across different machines.
     batch_size = cfg.TRAIN.BATCH_SIZE * cfg.NUM_SHARDS
     log_period = cfg.BENCHMARK.LOG_PERIOD

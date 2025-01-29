@@ -2,11 +2,16 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 
 from .ava_dataset import Ava  # noqa
-from .build import build_dataset, DATASET_REGISTRY  # noqa
+from .build import DATASET_REGISTRY, build_dataset  # noqa
 from .charades import Charades  # noqa
 from .imagenet import Imagenet  # noqa
 from .kinetics import Kinetics  # noqa
 from .ssv2 import Ssv2  # noqa
+from .mammalnet_animal import Mammalnet_animal
+from .mammalnet_behavior import Mammalnet_behavior
+from .mammalnet_behavior_compositioan import Mammalnet_behavior_composition
+
+
 
 try:
     from .ptv_datasets import Ptvcharades, Ptvkinetics, Ptvssv2  # noqa

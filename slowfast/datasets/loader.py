@@ -4,16 +4,15 @@
 """Data loader."""
 
 import itertools
+import numpy as np
 from functools import partial
 from typing import List
-
-import numpy as np
 import torch
-
-from slowfast.datasets.multigrid_helper import ShortCycleBatchSampler
 from torch.utils.data._utils.collate import default_collate
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import RandomSampler, Sampler
+
+from slowfast.datasets.multigrid_helper import ShortCycleBatchSampler
 
 from . import utils as utils
 from .build import build_dataset
@@ -28,6 +27,10 @@ def multiple_samples_collate(batch, fold=False):
     Returns:
         (tuple): collated data batch.
     """
+
+    # print(batch)
+    # print("the length of batch",len(batch))
+    # assert False
     inputs, labels, video_idx, time, extra_data = zip(*batch)
     inputs = [item for sublist in inputs for item in sublist]
     labels = [item for sublist in labels for item in sublist]
@@ -76,9 +79,9 @@ def detection_collate(batch):
             bboxes = np.concatenate(bboxes, axis=0)
             collated_extra_data[key] = torch.tensor(bboxes).float()
         elif key == "metadata":
-            collated_extra_data[key] = torch.tensor(list(itertools.chain(*data))).view(
-                -1, 2
-            )
+            collated_extra_data[key] = torch.tensor(
+                list(itertools.chain(*data))
+            ).view(-1, 2)
         else:
             collated_extra_data[key] = default_collate(data)
 
@@ -125,7 +128,11 @@ def construct_loader(cfg, split, is_precise_bn=False):
             worker_init_fn=utils.loader_worker_init_fn(dataset),
         )
     else:
-        if cfg.MULTIGRID.SHORT_CYCLE and split in ["train"] and not is_precise_bn:
+        if (
+            cfg.MULTIGRID.SHORT_CYCLE
+            and split in ["train"]
+            and not is_precise_bn
+        ):
             # Create a sampler for multi-process training
             sampler = utils.create_sampler(dataset, shuffle, cfg)
             batch_sampler = ShortCycleBatchSampler(
@@ -145,20 +152,13 @@ def construct_loader(cfg, split, is_precise_bn=False):
             # Create a loader
             if cfg.DETECTION.ENABLE:
                 collate_func = detection_collate
-            elif (
-                (
-                    cfg.AUG.NUM_SAMPLE > 1
-                    or cfg.DATA.TRAIN_CROP_NUM_TEMPORAL > 1
-                    or cfg.DATA.TRAIN_CROP_NUM_SPATIAL > 1
-                )
-                and split in ["train"]
-                and not cfg.MODEL.MODEL_NAME == "ContrastiveModel"
-            ):
+            elif cfg.AUG.NUM_SAMPLE > 1 and split in ["train"]:
                 collate_func = partial(
                     multiple_samples_collate, fold="imagenet" in dataset_name
                 )
             else:
                 collate_func = None
+
             loader = torch.utils.data.DataLoader(
                 dataset,
                 batch_size=batch_size,
@@ -180,7 +180,10 @@ def shuffle_dataset(loader, cur_epoch):
         loader (loader): data loader to perform shuffle.
         cur_epoch (int): number of the current epoch.
     """
-    if loader._dataset_kind == torch.utils.data.dataloader._DatasetKind.Iterable:
+    if (
+        loader._dataset_kind
+        == torch.utils.data.dataloader._DatasetKind.Iterable
+    ):
         if hasattr(loader.dataset, "sampler"):
             sampler = loader.dataset.sampler
         else:
@@ -200,10 +203,3 @@ def shuffle_dataset(loader, cur_epoch):
     if isinstance(sampler, DistributedSampler):
         # DistributedSampler shuffles data based on epoch
         sampler.set_epoch(cur_epoch)
-
-    if hasattr(loader.dataset, "prefetcher"):
-        sampler = loader.dataset.prefetcher.sampler
-        if isinstance(sampler, DistributedSampler):
-            # DistributedSampler shuffles data based on epoch
-            print("prefetcher sampler")
-            sampler.set_epoch(cur_epoch)
