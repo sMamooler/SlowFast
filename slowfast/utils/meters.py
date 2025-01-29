@@ -557,7 +557,7 @@ class TestMeter(object):
             
         with open(self.data_file_path+file,"r") as f:
             for line in f.readlines():
-                label = line.split()[1]
+                label = line.split()[3]
                 try:
                     label_dict[label] +=1
                 except:
